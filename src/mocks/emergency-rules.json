@@ -1,0 +1,166 @@
+{
+  "_source": "Actual Mynd emergency criteria provided by Sutton (2026-04-04)",
+  "emergency_definitions": [
+    {
+      "condition": "No electricity in the entire unit or building",
+      "category": "electrical and equipment",
+      "keywords": ["no electricity", "no power", "power out", "blackout", "no lights"],
+      "priority": "Emergency",
+      "scheduling": "same-day"
+    },
+    {
+      "condition": "Water leak causing damage to flooring, walls, ceilings, or cabinetry",
+      "category": "plumbing",
+      "subconditions": [
+        "Roof leaks",
+        "Plumbing leaks causing damage",
+        "HVAC system leaks",
+        "Known weather-related leaks when rainfall forecasted within 24 hours",
+        "Refrigerator water supply line leaks",
+        "Unknown or continuous water leaks where source cannot be identified"
+      ],
+      "keywords": ["water leak", "leaking", "flooding", "water damage", "water everywhere", "burst pipe", "pipe burst", "leak in ceiling", "roof leak", "water coming in"],
+      "priority": "Emergency",
+      "scheduling": "same-day"
+    },
+    {
+      "condition": "Active fire or evidence of fire",
+      "category": "any",
+      "keywords": ["fire", "smoke", "burning smell", "flames"],
+      "priority": "Emergency",
+      "action": "Resident must contact 911 immediately before Mynd is notified",
+      "scheduling": "same-day"
+    },
+    {
+      "condition": "No heat when exterior temp below 55°F or forecasted below 55°F within 3 days",
+      "category": "heating and cooling",
+      "keywords": ["no heat", "heater not working", "furnace not working", "freezing", "no heating", "heat broken"],
+      "temp_threshold_f": 55,
+      "temp_direction": "below",
+      "state_exceptions": {
+        "NV": "Heater outage must be addressed within 24 hours"
+      },
+      "priority": "Emergency",
+      "scheduling": "same-day or next-day"
+    },
+    {
+      "condition": "No hot water to entire unit",
+      "category": "plumbing",
+      "keywords": ["no hot water", "water heater broken", "water heater not working", "cold water only"],
+      "priority": "Emergency",
+      "scheduling": "same-day or next-day"
+    },
+    {
+      "condition": "No AC when exterior temp above 85°F or forecasted above 85°F within 3 days",
+      "category": "heating and cooling",
+      "keywords": ["no ac", "ac broken", "air conditioner not working", "no cooling", "ac not cooling", "no cold air"],
+      "temp_threshold_f": 85,
+      "temp_direction": "above",
+      "state_exceptions": {
+        "AZ": "Emergency when exterior temperature exceeds 92°F",
+        "NV": "A/C outage must be addressed within 48 hours"
+      },
+      "note": "If unit has multiple systems and only one is down, it is NOT an emergency",
+      "priority": "Emergency",
+      "scheduling": "same-day or next-day"
+    },
+    {
+      "condition": "Toilet, sink or bathtub overflowed with black water or dirty water",
+      "category": "plumbing",
+      "keywords": ["sewage", "black water", "overflow", "sewage backup", "dirty water overflow", "raw sewage"],
+      "priority": "Emergency",
+      "scheduling": "same-day"
+    },
+    {
+      "condition": "Inoperable toilet or shower (if only one bathroom in unit)",
+      "category": "plumbing",
+      "keywords": ["toilet not working", "shower not working", "can't flush", "can't use bathroom"],
+      "note": "Only emergency if unit has only ONE bathroom",
+      "priority": "Emergency",
+      "scheduling": "same-day or next-day"
+    },
+    {
+      "condition": "Inoperable refrigerator",
+      "category": "appliances",
+      "keywords": ["refrigerator not working", "fridge broken", "fridge not cooling", "refrigerator dead"],
+      "priority": "Emergency",
+      "scheduling": "same-day or next-day"
+    },
+    {
+      "condition": "Broken window creating safety, security, or weather-exposure risk",
+      "category": "doors and windows",
+      "keywords": ["broken window", "window shattered", "glass broken", "window smashed"],
+      "note": "Not cosmetic cracks — must be safety/security/weather risk",
+      "priority": "Emergency",
+      "scheduling": "same-day or next-day"
+    },
+    {
+      "condition": "Smell of gas",
+      "category": "any",
+      "keywords": ["gas smell", "smell gas", "gas leak", "smells like gas", "rotten egg smell"],
+      "action": "Resident should also contact the utility company",
+      "priority": "Emergency",
+      "scheduling": "same-day"
+    },
+    {
+      "condition": "Non-functional vehicular access gates preventing safe entry or exit",
+      "category": "doors and windows",
+      "keywords": ["gate not working", "gate stuck", "can't get in", "can't get out", "gate broken"],
+      "priority": "Emergency",
+      "scheduling": "same-day"
+    },
+    {
+      "condition": "Garage door inoperable — cannot be manually closed OR vehicle stuck inside",
+      "category": "doors and windows",
+      "keywords": ["garage door stuck", "garage door won't close", "garage door broken", "car stuck in garage", "garage door won't open"],
+      "note": "Emergency only if: can't be manually closed, or can't be manually opened and vehicle is stuck inside",
+      "priority": "Emergency",
+      "scheduling": "same-day or next-day"
+    },
+    {
+      "condition": "Elevator outage — only available elevator or required for ADA access",
+      "category": "electrical and equipment",
+      "keywords": ["elevator broken", "elevator not working", "elevator stuck", "elevator out"],
+      "note": "Only emergency when it's the only available elevator, or required for ADA access",
+      "priority": "Emergency",
+      "scheduling": "same-day"
+    },
+    {
+      "condition": "Complete range failure (both oven and stove inoperable)",
+      "category": "appliances",
+      "keywords": ["stove not working", "oven not working", "range broken", "can't cook", "stove and oven broken"],
+      "note": "Both oven AND stove must be inoperable — if only one is down, not an emergency",
+      "priority": "Emergency",
+      "scheduling": "same-day or next-day"
+    },
+    {
+      "condition": "Unable to secure the unit due to inoperable or broken entry locks",
+      "category": "doors and windows",
+      "keywords": ["lock broken", "can't lock door", "door won't lock", "lock not working", "deadbolt broken", "security concern"],
+      "priority": "Emergency",
+      "scheduling": "same-day"
+    }
+  ],
+  "priority_levels": {
+    "Emergency": {
+      "description": "Life safety, habitability, or active property damage. Immediate response required.",
+      "scheduling": "same-day or next-day",
+      "escalation": true
+    },
+    "Urgent": {
+      "description": "Significant impact but not life-threatening or causing active damage.",
+      "scheduling": "next-day or within 2 days",
+      "escalation": false
+    },
+    "Standard": {
+      "description": "Normal maintenance issue. Schedule within standard windows.",
+      "scheduling": "2+ days out, resident choice of morning (8-12) or afternoon (1-5)",
+      "escalation": false
+    },
+    "Low": {
+      "description": "Cosmetic or non-critical. Schedule at convenience.",
+      "scheduling": "flexible, 3+ days out",
+      "escalation": false
+    }
+  }
+}

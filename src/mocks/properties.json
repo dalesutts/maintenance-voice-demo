@@ -1,0 +1,95 @@
+{
+  "_source": "Based on actual Mynd PROPERTIES, UNITS, and SERVICE_REQUESTS table schemas",
+  "residents": {
+    "default": {
+      "resident_id": "j0hj1gej3sdjj1as",
+      "name": "Sarah Johnson",
+      "phone": "+15551234567",
+      "email": "sarah.johnson@email.com",
+      "property": {
+        "property_id": "e6k1aiepuaiivqe2",
+        "address": "1247 W Oak Valley Drive",
+        "city": "Phoenix",
+        "state": "AZ",
+        "zip": "85042",
+        "county": "Maricopa",
+        "property_type": "Single Family",
+        "year_built": 2004,
+        "management_status": "Active",
+        "time_zone": "America/Phoenix",
+        "has_hoa": false,
+        "service_request_threshold": 500.00,
+        "building_access": "Unrestricted access"
+      },
+      "unit": {
+        "unit_id": "rf0dusgmq1lhj8p1",
+        "unit_number": null,
+        "status": "OCCUPIED",
+        "bedrooms": 3,
+        "full_bathrooms": 2,
+        "half_bathrooms": 0,
+        "square_footage": 1650
+      },
+      "lease": {
+        "lease_contract_id": "6gnu464h9vi6ee6g",
+        "status": "Active",
+        "lease_end": "2026-12-31",
+        "move_in_date": "2024-06-15"
+      },
+      "ambient_conditions": {
+        "current_outdoor_temp_f": 98,
+        "weather_forecast": "Clear, Hot — 100°F+ expected through the week",
+        "rainfall_forecast_24h": false
+      },
+      "open_service_requests": [],
+      "recent_service_requests": [
+        {
+          "sr_id": "nvhhghl5cprt5bma",
+          "external_id": "2876661",
+          "description": "The caulking in the master bedroom bathroom has deteriorated.",
+          "status": "Open",
+          "priority": 4,
+          "category": "plumbing",
+          "item": "tub or shower",
+          "created_at": "2026-04-04"
+        }
+      ],
+      "notes": ""
+    }
+  },
+  "sr_format": {
+    "_description": "Service Request structure matching actual Mynd SR table",
+    "fields": {
+      "service_request_id": "auto-generated",
+      "external_id": "auto-generated sequential",
+      "description": "resident description + bot summary",
+      "status": "1 = Open",
+      "priority": "0 = Emergency, 1-2 = Urgent, 3-4 = Standard",
+      "location_id": "from taxonomy locations",
+      "category_id": "from taxonomy categories",
+      "item_id": "from taxonomy items (sub_category mapped to item)",
+      "symptom_id": "from taxonomy symptoms (issue mapped to symptom)",
+      "origin": "4 = Voice (proposed for PoC)",
+      "type": "1 = Standard maintenance",
+      "permission_to_enter": "collected during intake",
+      "resident_availability": "JSON array of date/time windows",
+      "resident_available_any_time": "boolean",
+      "taxonomy_v2": true
+    },
+    "availability_format": {
+      "example": [
+        {"date": "2026-04-07", "timeFrom": 8, "timeTo": 12},
+        {"date": "2026-04-07", "timeFrom": 13, "timeTo": 17},
+        {"date": "2026-04-08", "timeFrom": 8, "timeTo": 17}
+      ],
+      "note": "timeFrom/timeTo are hours (8-12 = morning, 13-17 = afternoon, 8-17 = all day)"
+    },
+    "priority_mapping": {
+      "0": "Emergency",
+      "1": "Urgent (High)",
+      "2": "Urgent",
+      "3": "Standard (Medium)",
+      "4": "Standard (Low)"
+    }
+  }
+}

@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mynd Maintenance Voice Demo</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 1fr 340px;
+      gap: 1.5rem;
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 2rem;
+      min-height: 100vh;
+    }
+    .left { display: flex; flex-direction: column; }
+    .right { display: flex; flex-direction: column; gap: 1rem; }
+
+    h1 { font-size: 1.4rem; font-weight: 600; color: #f8fafc; }
+    .subtitle { color: #94a3b8; font-size: 0.85rem; margin-bottom: 1.5rem; }
+
+    /* Call controls */
+    .controls { display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; }
+    .call-btn {
+      width: 64px; height: 64px; border-radius: 50%; border: none;
+      background: #22c55e; color: white; font-size: 1.5rem; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.2s; flex-shrink: 0;
+    }
+    .call-btn:hover { transform: scale(1.05); background: #16a34a; }
+    .call-btn.active { background: #ef4444; animation: pulse 2s infinite; }
+    .call-btn:disabled { background: #475569; cursor: not-allowed; }
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(239,68,68,0.4); }
+      70% { box-shadow: 0 0 0 15px rgba(239,68,68,0); }
+      100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); }
+    }
+    .call-info { flex: 1; }
+    .call-status { font-size: 0.9rem; color: #94a3b8; }
+    .call-status.connected { color: #22c55e; }
+
+    /* Mic select */
+    .mic-row { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem; }
+    .mic-row select {
+      flex: 1; background: #1e293b; color: #e2e8f0; border: 1px solid #334155;
+      border-radius: 6px; padding: 0.3rem 0.5rem; font-size: 0.8rem;
+    }
+    .mic-row button {
+      background: #334155; color: #e2e8f0; border: none; padding: 0.3rem 0.75rem;
+      border-radius: 6px; cursor: pointer; font-size: 0.8rem;
+    }
+
+    /* Transcript */
+    .transcript {
+      flex: 1; background: #1e293b; border-radius: 12px; padding: 1rem;
+      overflow-y: auto; font-size: 0.85rem; line-height: 1.6;
+    }
+    .msg { margin-bottom: 0.75rem; }
+    .msg .role { font-weight: 600; font-size: 0.75rem; text-transform: uppercase; margin-bottom: 0.15rem; }
+    .msg.agent .role { color: #22c55e; }
+    .msg.user .role { color: #38bdf8; }
+    .msg .text { color: #cbd5e1; }
+
+    /* Right panel cards */
+    .card {
+      background: #1e293b; border-radius: 12px; padding: 1rem;
+    }
+    .card h3 {
+      font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;
+      color: #64748b; margin-bottom: 0.75rem;
+    }
+    .field { display: flex; justify-content: space-between; margin-bottom: 0.4rem; font-size: 0.8rem; }
+    .field .label { color: #94a3b8; }
+    .field .value { color: #f8fafc; font-weight: 500; text-align: right; }
+    .field .value.emergency { color: #ef4444; font-weight: 700; }
+    .field .value.urgent { color: #f59e0b; }
+    .field .value.standard { color: #22c55e; }
+    .field .value.pending { color: #64748b; font-style: italic; }
+
+    /* SR card */
+    .sr-card { border: 1px solid #334155; }
+    .sr-card.created { border-color: #22c55e; }
+    .sr-id { font-size: 1.1rem; font-weight: 700; color: #22c55e; margin-bottom: 0.5rem; }
+
+    /* Latency */
+    .latency-bar {
+      height: 4px; background: #334155; border-radius: 2px; margin-top: 0.25rem; overflow: hidden;
+    }
+    .latency-fill { height: 100%; border-radius: 2px; transition: width 0.3s; }
+    .latency-fill.fast { background: #22c55e; }
+    .latency-fill.ok { background: #f59e0b; }
+    .latency-fill.slow { background: #ef4444; }
+
+    /* Scenarios */
+    .scenarios { font-size: 0.75rem; color: #64748b; line-height: 1.5; }
+    .scenarios strong { color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <!-- LEFT: Call controls + transcript -->
+    <div class="left">
+      <h1>Mynd Maintenance Voice Demo</h1>
+      <p class="subtitle">ResBot v2 Voice AI Proof of Concept</p>
+
+      <div class="mic-row">
+        <select id="micSelect"></select>
+        <button onclick="testMic()">Test Mic</button>
+      </div>
+
+      <div class="controls">
+        <button class="call-btn" id="callBtn" onclick="toggleCall()">
+          <span id="btnIcon">&#128222;</span>
+        </button>
+        <div class="call-info">
+          <div class="call-status" id="status">Click to start a voice call</div>
+          <div id="latencyDisplay" style="font-size: 0.75rem; color: #64748b; margin-top: 0.25rem;"></div>
+        </div>
+      </div>
+
+      <div class="transcript" id="transcript">
+        <div style="color: #475569; text-align: center; padding: 2rem;">Start a call to see the conversation here</div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Live data panel -->
+    <div class="right">
+      <!-- Property -->
+      <div class="card" id="propertyCard">
+        <h3>Property</h3>
+        <div class="field"><span class="label">Resident</span><span class="value pending" id="propResident">--</span></div>
+        <div class="field"><span class="label">Address</span><span class="value pending" id="propAddress">--</span></div>
+        <div class="field"><span class="label">Unit</span><span class="value pending" id="propUnit">--</span></div>
+        <div class="field"><span class="label">State</span><span class="value pending" id="propState">--</span></div>
+        <div class="field"><span class="label">Outdoor Temp</span><span class="value pending" id="propTemp">--</span></div>
+      </div>
+
+      <!-- Taxonomy -->
+      <div class="card" id="taxonomyCard">
+        <h3>Issue Classification</h3>
+        <div class="field"><span class="label">Category</span><span class="value pending" id="taxCategory">--</span></div>
+        <div class="field"><span class="label">Item</span><span class="value pending" id="taxItem">--</span></div>
+        <div class="field"><span class="label">Symptom</span><span class="value pending" id="taxSymptom">--</span></div>
+        <div class="field"><span class="label">Location</span><span class="value pending" id="taxLocation">--</span></div>
+        <div class="field"><span class="label">Component</span><span class="value pending" id="taxComponent">--</span></div>
+      </div>
+
+      <!-- Priority -->
+      <div class="card" id="priorityCard">
+        <h3>Priority Assessment</h3>
+        <div class="field"><span class="label">Priority</span><span class="value pending" id="priorLevel">--</span></div>
+        <div class="field"><span class="label">Scheduling</span><span class="value pending" id="priorSchedule">--</span></div>
+      </div>
+
+      <!-- Service Request -->
+      <div class="card sr-card" id="srCard">
+        <h3>Service Request</h3>
+        <div class="sr-id" id="srId" style="display:none;"></div>
+        <div class="field"><span class="label">Status</span><span class="value pending" id="srStatus">Pending intake</span></div>
+        <div class="field"><span class="label">Scheduled</span><span class="value pending" id="srScheduled">--</span></div>
+        <div class="field"><span class="label">Photos</span><span class="value pending" id="srPhotos">--</span></div>
+      </div>
+
+      <!-- Latency -->
+      <div class="card">
+        <h3>Latency (last response)</h3>
+        <div class="field"><span class="label">LLM</span><span class="value" id="latLlm">--</span></div>
+        <div class="latency-bar"><div class="latency-fill" id="latBar" style="width:0%"></div></div>
+        <div style="display:flex; justify-content:space-between; font-size:0.65rem; color:#475569; margin-top:0.15rem;">
+          <span>0ms</span><span>500ms</span><span>1s</span><span>2s</span>
+        </div>
+      </div>
+
+      <!-- Scenarios -->
+      <div class="card scenarios">
+        <strong>Test scenarios:</strong><br>
+        1. "My kitchen faucet has a slow drip" (standard)<br>
+        2. "My AC stopped working" (emergency in AZ heat)<br>
+        3. "I smell gas" (safety emergency)
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { RetellWebClient } from 'https://esm.sh/retell-client-js-sdk@2.0.7';
+
+    const SERVER_URL = 'http://localhost:8080';
+    let retellClient = null;
+    let isCallActive = false;
+    let testStream = null;
+    let currentCallId = null;
+    let eventSource = null;
+
+    window.toggleCall = toggleCall;
+    window.testMic = testMic;
+
+    // --- Mic setup ---
+    async function loadMics() {
+      try {
+        await navigator.mediaDevices.getUserMedia({ audio: true });
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const mics = devices.filter(d => d.kind === 'audioinput');
+        const select = document.getElementById('micSelect');
+        select.innerHTML = '';
+        mics.forEach((mic, i) => {
+          const opt = document.createElement('option');
+          opt.value = mic.deviceId;
+          opt.textContent = mic.label || `Microphone ${i + 1}`;
+          select.appendChild(opt);
+        });
+      } catch(e) {}
+    }
+    loadMics();
+
+    async function testMic() {
+      if (testStream) { testStream.getTracks().forEach(t => t.stop()); testStream = null; return; }
+      const deviceId = document.getElementById('micSelect').value;
+      try {
+        testStream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: deviceId ? { exact: deviceId } : undefined } });
+        const ctx = new AudioContext();
+        const analyser = ctx.createAnalyser(); analyser.fftSize = 256;
+        ctx.createMediaStreamSource(testStream).connect(analyser);
+        const data = new Uint8Array(analyser.frequencyBinCount);
+        (function update() {
+          if (!testStream) return;
+          analyser.getByteFrequencyData(data);
+          requestAnimationFrame(update);
+        })();
+      } catch(e) {}
+    }
+
+    // --- UI helpers ---
+    function setStatus(msg, cls = '') {
+      const el = document.getElementById('status');
+      el.textContent = msg; el.className = 'call-status ' + cls;
+    }
+
+    function addMessage(role, text) {
+      const el = document.getElementById('transcript');
+      // Remove placeholder
+      if (el.querySelector('div[style]')) el.innerHTML = '';
+
+      // Update or create message bubble for this role
+      const existing = el.querySelector(`.msg.${role}:last-child`);
+      if (existing) {
+        existing.querySelector('.text').textContent = text;
+      } else {
+        const msg = document.createElement('div');
+        msg.className = `msg ${role}`;
+        msg.innerHTML = `<div class="role">${role === 'agent' ? 'Mynd Bot' : 'Resident'}</div><div class="text">${text}</div>`;
+        el.appendChild(msg);
+      }
+      el.scrollTop = el.scrollHeight;
+    }
+
+    function updateProperty(data) {
+      document.getElementById('propResident').textContent = data.resident_name || '--';
+      document.getElementById('propResident').className = 'value';
+      document.getElementById('propAddress').textContent = data.property?.address || '--';
+      document.getElementById('propAddress').className = 'value';
+      const unit = data.unit;
+      document.getElementById('propUnit').textContent = unit ? `${unit.bedrooms}bd / ${unit.full_bathrooms}ba / ${unit.square_footage}sqft` : '--';
+      document.getElementById('propUnit').className = 'value';
+      document.getElementById('propState').textContent = data.property?.state || '--';
+      document.getElementById('propState').className = 'value';
+      const temp = data.ambient_conditions?.current_outdoor_temp_f;
+      document.getElementById('propTemp').textContent = temp ? `${temp}°F` : '--';
+      document.getElementById('propTemp').className = 'value';
+    }
+
+    function updateTaxonomy(data) {
+      const tax = data.taxonomy || data;
+      document.getElementById('taxCategory').textContent = tax.category || '--';
+      document.getElementById('taxCategory').className = 'value';
+      document.getElementById('taxItem').textContent = tax.item || '--';
+      document.getElementById('taxItem').className = 'value';
+      document.getElementById('taxSymptom').textContent = tax.symptom || '--';
+      document.getElementById('taxSymptom').className = 'value';
+      document.getElementById('taxLocation').textContent = tax.location || '--';
+      document.getElementById('taxLocation').className = 'value';
+      document.getElementById('taxComponent').textContent = tax.component || '--';
+      document.getElementById('taxComponent').className = 'value';
+    }
+
+    function updatePriority(level, scheduling) {
+      const el = document.getElementById('priorLevel');
+      el.textContent = level;
+      el.className = 'value ' + (level === 'Emergency' ? 'emergency' : level === 'Urgent' ? 'urgent' : 'standard');
+      document.getElementById('priorSchedule').textContent = scheduling || '--';
+      document.getElementById('priorSchedule').className = 'value';
+    }
+
+    function updateSR(data) {
+      const card = document.getElementById('srCard');
+      card.classList.add('created');
+      const srId = data.sr_id || data._poc_metadata?.sr_display_id;
+      if (srId) {
+        document.getElementById('srId').textContent = srId;
+        document.getElementById('srId').style.display = 'block';
+      }
+      document.getElementById('srStatus').textContent = 'Created';
+      document.getElementById('srStatus').className = 'value standard';
+    }
+
+    function updateSchedule(data) {
+      document.getElementById('srScheduled').textContent = data.confirmation_text || `${data.scheduled_date} ${data.time_window}`;
+      document.getElementById('srScheduled').className = 'value';
+    }
+
+    function updatePhotos(sent) {
+      document.getElementById('srPhotos').textContent = sent ? 'SMS sent' : '--';
+      document.getElementById('srPhotos').className = 'value';
+    }
+
+    function updateLatency(ms) {
+      document.getElementById('latLlm').textContent = ms + 'ms';
+      const pct = Math.min(100, (ms / 2000) * 100);
+      const bar = document.getElementById('latBar');
+      bar.style.width = pct + '%';
+      bar.className = 'latency-fill ' + (ms < 600 ? 'fast' : ms < 1200 ? 'ok' : 'slow');
+      document.getElementById('latencyDisplay').textContent = `Last response: ${ms}ms`;
+    }
+
+    function resetPanel() {
+      ['propResident','propAddress','propUnit','propState','propTemp',
+       'taxCategory','taxItem','taxSymptom','taxLocation','taxComponent',
+       'priorLevel','priorSchedule','srStatus','srScheduled','srPhotos'].forEach(id => {
+        const el = document.getElementById(id);
+        el.textContent = id === 'srStatus' ? 'Pending intake' : '--';
+        el.className = 'value pending';
+      });
+      document.getElementById('srId').style.display = 'none';
+      document.getElementById('srCard').classList.remove('created');
+      document.getElementById('latLlm').textContent = '--';
+      document.getElementById('latBar').style.width = '0%';
+      document.getElementById('latencyDisplay').textContent = '';
+      document.getElementById('transcript').innerHTML = '<div style="color: #475569; text-align: center; padding: 2rem;">Listening...</div>';
+    }
+
+    // --- SSE: receive tool call events from server ---
+    function startEventStream(callId) {
+      if (eventSource) eventSource.close();
+      eventSource = new EventSource(`${SERVER_URL}/events/${callId}`);
+      eventSource.onmessage = (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (data.type === 'tool_result') {
+            if (data.tool === 'lookup_property') updateProperty(data.result);
+            if (data.tool === 'classify_and_evaluate') updateTaxonomy(data.result);
+            if (data.tool === 'collect_availability') updateSchedule(data.result);
+            if (data.tool === 'create_service_request') updateSR(data.result);
+            if (data.tool === 'send_photo_sms') updatePhotos(true);
+          }
+          if (data.type === 'priority') updatePriority(data.level, data.scheduling);
+          if (data.type === 'latency') updateLatency(data.ms);
+        } catch(err) {}
+      };
+    }
+
+    // --- Call management ---
+    async function toggleCall() {
+      if (isCallActive) { stopCall(); } else { await startCall(); }
+    }
+
+    async function startCall() {
+      const btn = document.getElementById('callBtn');
+      btn.disabled = true;
+      setStatus('Connecting...');
+      resetPanel();
+
+      try {
+        const resp = await fetch(SERVER_URL + '/create-web-call', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({})
+        });
+        if (!resp.ok) throw new Error((await resp.json()).error || 'Failed');
+        const { access_token, call_id } = await resp.json();
+        currentCallId = call_id;
+
+        // Start SSE stream for tool results
+        startEventStream(call_id);
+
+        retellClient = new RetellWebClient();
+
+        retellClient.on('call_started', () => {
+          isCallActive = true;
+          btn.classList.add('active'); btn.disabled = false;
+          document.getElementById('btnIcon').innerHTML = '&#9632;';
+          setStatus('Call active — speak now', 'connected');
+        });
+
+        retellClient.on('call_ended', () => {
+          isCallActive = false;
+          btn.classList.remove('active'); btn.disabled = false;
+          document.getElementById('btnIcon').innerHTML = '&#128222;';
+          setStatus('Call ended');
+          if (eventSource) eventSource.close();
+        });
+
+        let lastTranscriptLen = 0;
+        retellClient.on('update', (update) => {
+          if (update.transcript && update.transcript.length > 0) {
+            const last = update.transcript[update.transcript.length - 1];
+            if (last && last.content) {
+              addMessage(last.role, last.content);
+            }
+          }
+        });
+
+        retellClient.on('error', (error) => {
+          setStatus('Error: ' + (error.message || error), 'error');
+        });
+
+        if (testStream) { testStream.getTracks().forEach(t => t.stop()); testStream = null; }
+        const selectedMic = document.getElementById('micSelect').value;
+        await retellClient.startCall({ accessToken: access_token, captureDeviceId: selectedMic || undefined });
+
+      } catch (error) {
+        setStatus('Failed: ' + error.message, 'error');
+        btn.disabled = false;
+      }
+    }
+
+    function stopCall() { if (retellClient) retellClient.stopCall(); }
+  </script>
+</body>
+</html>

@@ -1,0 +1,30 @@
+{
+  "name": "maintenance-voice-demo",
+  "version": "1.0.0",
+  "description": "Voice AI maintenance intake PoC using Retell AI + Claude",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "setup": "node src/agent-config.js",
+    "test": "jest --verbose",
+    "test:classify": "jest --verbose --testPathPattern=classify",
+    "test:conversation": "jest --verbose --testPathPattern=conversation",
+    "demo": "bash scripts/start-demo.sh"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.82.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.0",
+    "express": "^5.2.1",
+    "retell-sdk": "^5.12.0",
+    "ws": "^8.20.0"
+  },
+  "devDependencies": {
+    "jest": "^30.3.0"
+  }
+}
