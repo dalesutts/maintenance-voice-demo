@@ -62,12 +62,16 @@ function cleanForVoice(text) {
     cleaned = cleaned.replace(pattern, '');
   }
 
-  // 4. Clean up whitespace
+  // 4. Ensure sentence boundaries have proper spacing for TTS
+  cleaned = cleaned.replace(/([.!?])([A-Z])/g, '$1 $2');  // Add space between sentences
+  cleaned = cleaned.replace(/([a-z])([A-Z])/g, '$1. $2'); // Add period+space if missing between sentences
+
+  // 5. Clean up whitespace
   cleaned = cleaned.replace(/\s{2,}/g, ' ');       // collapse multiple spaces
   cleaned = cleaned.replace(/\.\s*\./g, '.');      // collapse double periods
   cleaned = cleaned.replace(/^\s+|\s+$/g, '');     // trim
 
-  // 5. Ensure response isn't empty after cleaning
+  // 6. Ensure response isn't empty after cleaning
   if (!cleaned.trim()) {
     return null; // Signal to caller that nothing should be spoken
   }

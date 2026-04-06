@@ -192,7 +192,7 @@
   <script type="module">
     import { RetellWebClient } from 'https://esm.sh/retell-client-js-sdk@2.0.7';
 
-    const SERVER_URL = 'http://localhost:8080';
+    const SERVER_URL = window.location.origin;
     let retellClient = null;
     let isCallActive = false;
     let testStream = null;
