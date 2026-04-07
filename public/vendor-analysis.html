@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Voice AI Vendor Analysis - STT + TTS Cost/Value Curve</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; }
+    .header { max-width: 1200px; margin: 0 auto; padding: 2rem 2rem 0; }
+    .header h1 { font-size: 1.6rem; font-weight: 700; color: #f8fafc; }
+    .header p { color: #94a3b8; font-size: 0.9rem; margin-top: 0.25rem; }
+    .tabs { display: flex; gap: 0.5rem; margin-top: 1.5rem; }
+    .tab { padding: 0.5rem 1.25rem; border-radius: 8px 8px 0 0; border: 1px solid #334155; border-bottom: none; background: #1e293b; color: #94a3b8; cursor: pointer; font-size: 0.85rem; font-weight: 500; transition: all 0.15s; }
+    .tab:hover { color: #e2e8f0; }
+    .tab.active { background: #1e293b; color: #22c55e; border-color: #22c55e; border-bottom: 2px solid #1e293b; position: relative; z-index: 2; }
+    .content { max-width: 1200px; margin: 0 auto; padding: 0 2rem 2rem; }
+    .panel { display: none; background: #1e293b; border-radius: 0 12px 12px 12px; padding: 1.5rem; border: 1px solid #334155; }
+    .panel.active { display: block; }
+    .chart-container { position: relative; height: 480px; margin-bottom: 1.5rem; }
+    .legend-row { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1rem; justify-content: center; }
+    .legend-item { display: flex; align-items: center; gap: 0.35rem; font-size: 0.75rem; color: #94a3b8; }
+    .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.8rem; margin-top: 1rem; }
+    th { text-align: left; padding: 0.6rem 0.75rem; background: #0f172a; color: #94a3b8; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; font-size: 0.7rem; border-bottom: 2px solid #334155; }
+    td { padding: 0.6rem 0.75rem; border-bottom: 1px solid #1e293b; color: #cbd5e1; }
+    tr:hover td { background: rgba(34,197,94,0.05); }
+    .cost { color: #fbbf24; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .best { color: #22c55e; font-weight: 600; }
+    .good { color: #38bdf8; }
+    .ok { color: #f59e0b; }
+    .poor { color: #ef4444; }
+    .tag { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.7rem; font-weight: 600; }
+    .tag-rec { background: rgba(34,197,94,0.15); color: #22c55e; }
+    .tag-cur { background: rgba(59,130,246,0.15); color: #60a5fa; }
+    .tag-budget { background: rgba(251,191,36,0.15); color: #fbbf24; }
+    .rec-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1rem; margin-top: 1rem; }
+    .rec-card { background: #0f172a; border-radius: 12px; padding: 1.25rem; border: 1px solid #334155; }
+    .rec-card h4 { font-size: 0.85rem; color: #f8fafc; margin-bottom: 0.25rem; }
+    .rec-card .price { font-size: 1.4rem; font-weight: 700; margin: 0.5rem 0; }
+    .rec-card .price.green { color: #22c55e; }
+    .rec-card .price.blue { color: #60a5fa; }
+    .rec-card .price.yellow { color: #fbbf24; }
+    .rec-card ul { list-style: none; margin-top: 0.5rem; }
+    .rec-card li { font-size: 0.8rem; color: #94a3b8; padding: 0.2rem 0; }
+    .rec-card li::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 0.5rem; }
+    .rec-card.best li::before { background: #22c55e; }
+    .rec-card.balanced li::before { background: #60a5fa; }
+    .rec-card.budget li::before { background: #fbbf24; }
+    .rec-label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700; margin-bottom: 0.5rem; }
+    .assumptions { background: #0f172a; border-radius: 8px; padding: 1rem; margin-top: 1.5rem; font-size: 0.75rem; color: #64748b; line-height: 1.6; }
+    .assumptions strong { color: #94a3b8; }
+    .scenario-row { display: flex; gap: 1rem; margin-bottom: 1rem; align-items: center; }
+    .scenario-row label { font-size: 0.8rem; color: #94a3b8; }
+    .scenario-row select { background: #0f172a; color: #e2e8f0; border: 1px solid #334155; border-radius: 6px; padding: 0.3rem 0.75rem; font-size: 0.8rem; }
+    .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
+    .kpi { background: #0f172a; border-radius: 8px; padding: 1rem; text-align: center; }
+    .kpi .val { font-size: 1.3rem; font-weight: 700; color: #f8fafc; }
+    .kpi .lbl { font-size: 0.7rem; color: #64748b; margin-top: 0.25rem; text-transform: uppercase; letter-spacing: 0.04em; }
+    @media (max-width: 768px) {
+      .kpi-row { grid-template-columns: repeat(2, 1fr); }
+      .rec-grid { grid-template-columns: 1fr; }
+      .chart-container { height: 350px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Voice AI Vendor Analysis: STT + TTS Cost/Value Curve</h1>
+    <p>Maintenance Voice Intake PoC &mdash; Vendor selection for production scaling</p>
+    <div class="tabs">
+      <div class="tab active" onclick="showPanel('scatter')">Cost vs Quality</div>
+      <div class="tab" onclick="showPanel('stacks')">Full Stack Combos</div>
+      <div class="tab" onclick="showPanel('volume')">Volume Scenarios</div>
+      <div class="tab" onclick="showPanel('detail')">Vendor Details</div>
+      <div class="tab" onclick="showPanel('rec')">Recommendation</div>
+    </div>
+  </div>
+
+  <div class="content">
+    <!-- PANEL 1: Scatter chart -->
+    <div class="panel active" id="panel-scatter">
+      <div class="legend-row">
+        <div class="legend-item"><div class="legend-dot" style="background:#22c55e"></div> STT Providers</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#60a5fa"></div> TTS Providers</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#f59e0b"></div> All-in-One Platforms</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#ef4444; border: 2px solid #ef4444; background: transparent;"></div> Current (Retell)</div>
+      </div>
+      <div class="chart-container">
+        <canvas id="scatterChart"></canvas>
+      </div>
+      <div class="assumptions">
+        <strong>How to read:</strong> X-axis is cost per minute. Y-axis is a composite quality score (0-10) factoring voice naturalness, latency, streaming support, and real-time suitability. Top-left quadrant = best value. Bubble size = relative market adoption.
+      </div>
+    </div>
+
+    <!-- PANEL 2: Full stack combos -->
+    <div class="panel" id="panel-stacks">
+      <h3 style="font-size: 0.95rem; margin-bottom: 0.25rem;">Full Stack Cost Comparison (STT + TTS + LLM + Platform)</h3>
+      <p style="font-size: 0.8rem; color: #64748b; margin-bottom: 1rem;">Per-minute cost for a complete voice AI conversation, assuming Claude Haiku at ~$0.014/min</p>
+      <div class="chart-container" style="height: 380px;">
+        <canvas id="stackChart"></canvas>
+      </div>
+      <table>
+        <thead>
+          <tr><th>Stack</th><th>STT</th><th>TTS</th><th>LLM</th><th>Platform</th><th>Total/Min</th><th>Per Call (4m)</th><th>Fit</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Retell (current PoC)</td><td class="cost">$0.006</td><td class="cost">~$0.05</td><td class="cost">$0.014</td><td class="cost">$0.03</td><td class="cost">$0.10</td><td class="cost">$0.40</td><td><span class="tag tag-cur">Current</span></td></tr>
+          <tr><td>Vapi + Deepgram + Cartesia</td><td class="cost">$0.006</td><td class="cost">$0.05</td><td class="cost">$0.014</td><td class="cost">$0.01</td><td class="cost">$0.08</td><td class="cost">$0.32</td><td><span class="tag tag-rec">Recommended</span></td></tr>
+          <tr><td>Vapi + Deepgram + ElevenLabs</td><td class="cost">$0.006</td><td class="cost">$0.20</td><td class="cost">$0.014</td><td class="cost">$0.01</td><td class="cost">$0.23</td><td class="cost">$0.92</td><td>Premium voice</td></tr>
+          <tr><td>DIY: Deepgram + Cartesia</td><td class="cost">$0.006</td><td class="cost">$0.05</td><td class="cost">$0.014</td><td class="cost">$0.00</td><td class="cost">$0.07</td><td class="cost">$0.28</td><td>Eng-heavy</td></tr>
+          <tr><td>DIY: Deepgram + LMNT</td><td class="cost">$0.006</td><td class="cost">$0.03</td><td class="cost">$0.014</td><td class="cost">$0.00</td><td class="cost">$0.05</td><td class="cost">$0.20</td><td><span class="tag tag-budget">Budget</span></td></tr>
+          <tr><td>DIY: Deepgram + Polly Neural</td><td class="cost">$0.006</td><td class="cost">$0.014</td><td class="cost">$0.014</td><td class="cost">$0.00</td><td class="cost">$0.034</td><td class="cost">$0.14</td><td><span class="tag tag-budget">Cheapest</span></td></tr>
+          <tr><td>DIY: Deepgram + PlayHT</td><td class="cost">$0.006</td><td class="cost">$0.16</td><td class="cost">$0.014</td><td class="cost">$0.00</td><td class="cost">$0.18</td><td class="cost">$0.72</td><td>Good quality</td></tr>
+          <tr><td>Bland AI (all-in-one)</td><td colspan="4" style="text-align:center; color:#64748b;">Bundled pricing</td><td class="cost">$0.09</td><td class="cost">$0.36</td><td>Sales-focused</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- PANEL 3: Volume scenarios -->
+    <div class="panel" id="panel-volume">
+      <h3 style="font-size: 0.95rem; margin-bottom: 0.5rem;">Monthly Cost at Scale</h3>
+      <div class="scenario-row">
+        <label>Call volume:</label>
+        <select id="volumeSelect" onchange="updateVolume()">
+          <option value="500">500 calls/mo (pilot)</option>
+          <option value="2000" selected>2,000 calls/mo (single market)</option>
+          <option value="10000">10,000 calls/mo (multi-market)</option>
+          <option value="50000">50,000 calls/mo (nationwide)</option>
+        </select>
+        <label>Avg call length:</label>
+        <select id="durationSelect" onchange="updateVolume()">
+          <option value="3">3 min</option>
+          <option value="4" selected>4 min</option>
+          <option value="5">5 min</option>
+        </select>
+      </div>
+      <div class="kpi-row">
+        <div class="kpi"><div class="val" id="kpi-retell">--</div><div class="lbl">Retell (current)</div></div>
+        <div class="kpi"><div class="val" id="kpi-vapi" style="color:#22c55e">--</div><div class="lbl">Vapi + Cartesia</div></div>
+        <div class="kpi"><div class="val" id="kpi-diy">--</div><div class="lbl">DIY (Deepgram + LMNT)</div></div>
+        <div class="kpi"><div class="val" id="kpi-contact">--</div><div class="lbl">Contact Center (human)</div></div>
+      </div>
+      <div class="chart-container" style="height: 360px;">
+        <canvas id="volumeChart"></canvas>
+      </div>
+      <div class="assumptions">
+        <strong>Assumptions:</strong> Contact center cost = $5/call avg (agent time + overhead + after-call work). Hosting costs ($7-25/mo) excluded as negligible at scale. LLM = Claude Haiku at ~$0.014/min. All voice AI costs include STT + TTS + LLM + platform fees.
+      </div>
+    </div>
+
+    <!-- PANEL 4: Vendor details -->
+    <div class="panel" id="panel-detail">
+      <h3 style="font-size: 0.95rem; margin-bottom: 0.5rem;">STT Providers</h3>
+      <table>
+        <thead><tr><th>Provider</th><th>Model</th><th>Cost/Min</th><th>Latency</th><th>Streaming</th><th>Quality</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td class="best">Deepgram</td><td>Nova-2</td><td class="cost">$0.006</td><td class="best">100-300ms</td><td class="best">Yes (WS)</td><td>9/10</td><td>Industry standard for voice AI. Best price-to-quality.</td></tr>
+          <tr><td>AssemblyAI</td><td>Universal-2</td><td class="cost">$0.007</td><td class="good">300-500ms</td><td class="best">Yes (WS)</td><td>9/10</td><td>Strong accuracy, good diarization. Competitive with Deepgram.</td></tr>
+          <tr><td>Google Cloud</td><td>Chirp</td><td class="cost">$0.016</td><td class="ok">Medium</td><td class="good">Yes (gRPC)</td><td>8/10</td><td>High quality but 2.5x more expensive. GCP lock-in.</td></tr>
+          <tr><td>Azure</td><td>Speech Services</td><td class="cost">$0.016</td><td class="good">Low-Med</td><td class="best">Yes</td><td>8/10</td><td>Custom speech models available. Azure ecosystem.</td></tr>
+          <tr><td>AWS</td><td>Transcribe</td><td class="cost">$0.015</td><td class="ok">Medium</td><td class="good">Yes (WS)</td><td>7/10</td><td>Decent but pricier. Good if already on AWS.</td></tr>
+          <tr><td class="poor">OpenAI</td><td>Whisper API</td><td class="cost">$0.006</td><td class="poor">High (batch)</td><td class="poor">No</td><td>9/10</td><td>Excellent accuracy but NO streaming. Not viable for real-time voice.</td></tr>
+        </tbody>
+      </table>
+
+      <h3 style="font-size: 0.95rem; margin: 1.5rem 0 0.5rem;">TTS Providers</h3>
+      <table>
+        <thead><tr><th>Provider</th><th>Model</th><th>Cost/Min*</th><th>Latency (TTFB)</th><th>Streaming</th><th>Voice Quality</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td class="best">Cartesia</td><td>Sonic</td><td class="cost">$0.04-0.07</td><td class="best">100-200ms</td><td class="best">Yes (optimized)</td><td>8/10</td><td>Built for real-time voice AI. Fastest TTFB. Rising star.</td></tr>
+          <tr><td>LMNT</td><td>--</td><td class="cost">$0.02-0.05</td><td class="best">Very low</td><td class="best">Yes</td><td>7/10</td><td>Budget real-time option. Smaller voice library.</td></tr>
+          <tr><td>ElevenLabs</td><td>Multilingual v2</td><td class="cost">$0.16-0.27</td><td class="good">200-500ms</td><td class="best">Yes</td><td class="best">10/10</td><td>Best voice quality. Voice cloning. Premium price.</td></tr>
+          <tr><td>PlayHT</td><td>PlayHT 2.0</td><td class="cost">$0.14-0.18</td><td class="good">Low</td><td class="best">Yes</td><td>9/10</td><td>Very natural. Slightly cheaper than ElevenLabs.</td></tr>
+          <tr><td>OpenAI</td><td>TTS-1</td><td class="cost">$0.014</td><td class="ok">Medium</td><td class="ok">Limited</td><td>7/10</td><td>Cheap but not optimized for real-time conversation.</td></tr>
+          <tr><td>Google Cloud</td><td>Neural2</td><td class="cost">$0.014</td><td class="ok">Medium</td><td class="good">Yes</td><td>7/10</td><td>Good enough. Cheapest neural option alongside AWS.</td></tr>
+          <tr><td>AWS</td><td>Polly Neural</td><td class="cost">$0.014</td><td class="good">Low-Med</td><td class="best">Yes</td><td>7/10</td><td>Reliable, cheap. Voice sounds more "assistant-like."</td></tr>
+          <tr><td>Azure</td><td>Neural TTS</td><td class="cost">$0.014</td><td class="good">Low</td><td class="best">Yes</td><td>8/10</td><td>Custom neural voice available. Good quality.</td></tr>
+        </tbody>
+      </table>
+      <p style="font-size: 0.7rem; color: #475569; margin-top: 0.5rem;">* TTS costs normalized to per-minute of spoken output (~900 chars/min). Actual billing is per-character for most providers.</p>
+
+      <h3 style="font-size: 0.95rem; margin: 1.5rem 0 0.5rem;">All-in-One Voice Platforms</h3>
+      <table>
+        <thead><tr><th>Platform</th><th>Total Cost/Min</th><th>What's Included</th><th>Latency</th><th>Flexibility</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><span class="tag tag-cur">Retell AI</span></td><td class="cost">$0.07-0.11</td><td>STT + TTS + orchestration + telephony</td><td class="best">Low</td><td class="good">Good</td><td>Current PoC. Choose your own STT/TTS. Proven.</td></tr>
+          <tr><td class="best">Vapi</td><td class="cost">$0.05 + providers</td><td>Orchestration + telephony (BYO STT/TTS)</td><td class="best">Low</td><td class="best">Best</td><td>Most flexible. Transparent pass-through pricing. Dev-friendly.</td></tr>
+          <tr><td>Bland AI</td><td class="cost">$0.07-0.09</td><td>STT + TTS + LLM + telephony</td><td class="good">Low</td><td class="ok">Limited</td><td>More opaque. Outbound/sales focused.</td></tr>
+          <tr><td>PlayAI</td><td class="cost">$0.05-0.08</td><td>STT + own TTS + orchestration</td><td class="good">Low</td><td class="ok">Limited</td><td>Owns their TTS so cheaper on that component.</td></tr>
+          <tr><td>Vocode</td><td class="cost">Self-host: $0 + APIs</td><td>Open-source orchestration</td><td>Varies</td><td class="best">Full control</td><td>Free OSS. You manage infra. Most engineering work.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- PANEL 5: Recommendation -->
+    <div class="panel" id="panel-rec">
+      <h3 style="font-size: 0.95rem; margin-bottom: 1rem;">Vendor Recommendation for Mynd Voice AI</h3>
+      <div class="rec-grid">
+        <div class="rec-card best" style="border-color: #22c55e;">
+          <div class="rec-label" style="color: #22c55e;">RECOMMENDED: Best balance</div>
+          <h4>Vapi + Deepgram + Cartesia + Claude Haiku</h4>
+          <div class="price green">$0.08/min &middot; $0.32/call</div>
+          <ul>
+            <li>20% cheaper than current Retell stack</li>
+            <li>Fastest latency (Cartesia built for real-time)</li>
+            <li>Vapi is most flexible platform (swap any component)</li>
+            <li>Deepgram Nova-2 is industry-standard STT</li>
+            <li>Good voice quality (8/10) suitable for phone calls</li>
+            <li>~$640/mo at 2K calls vs $800/mo on Retell</li>
+          </ul>
+        </div>
+        <div class="rec-card balanced" style="border-color: #60a5fa;">
+          <div class="rec-label" style="color: #60a5fa;">PREMIUM: Best voice quality</div>
+          <h4>Vapi + Deepgram + ElevenLabs + Claude Haiku</h4>
+          <div class="price blue">$0.23/min &middot; $0.92/call</div>
+          <ul>
+            <li>ElevenLabs is best-in-class voice naturalness (10/10)</li>
+            <li>Best for executive demos or investor presentations</li>
+            <li>2.8x more expensive than recommended option</li>
+            <li>Slightly higher TTS latency than Cartesia</li>
+            <li>Voice cloning available for branded experience</li>
+            <li>~$1,840/mo at 2K calls</li>
+          </ul>
+        </div>
+        <div class="rec-card budget" style="border-color: #fbbf24;">
+          <div class="rec-label" style="color: #fbbf24;">BUDGET: Lowest cost at scale</div>
+          <h4>DIY: Deepgram + AWS Polly Neural + Claude Haiku</h4>
+          <div class="price yellow">$0.034/min &middot; $0.14/call</div>
+          <ul>
+            <li>3x cheaper than current Retell stack</li>
+            <li>Requires building your own orchestration layer</li>
+            <li>Voice quality is "good enough" (7/10), not premium</li>
+            <li>More engineering investment upfront (~2-3 weeks)</li>
+            <li>Best unit economics at 10K+ calls/mo</li>
+            <li>~$280/mo at 2K calls</li>
+          </ul>
+        </div>
+      </div>
+
+      <div style="margin-top: 1.5rem; background: #0f172a; border-radius: 12px; padding: 1.25rem; border-left: 3px solid #22c55e;">
+        <h4 style="font-size: 0.9rem; color: #f8fafc; margin-bottom: 0.5rem;">Suggested path</h4>
+        <p style="font-size: 0.8rem; color: #94a3b8; line-height: 1.6;">
+          <strong style="color: #22c55e;">Now (PoC validated):</strong> Stay on Retell for demos and stakeholder buy-in. $0.10/min is fine at low volume.<br>
+          <strong style="color: #60a5fa;">Q3 (production pilot):</strong> Migrate to Vapi + Deepgram + Cartesia. 20% savings, better latency, more control. Swap is straightforward since our Custom LLM server is platform-agnostic.<br>
+          <strong style="color: #fbbf24;">Q4+ (scale):</strong> Evaluate DIY stack if volume justifies the engineering investment. At 10K+ calls/mo, the savings are $460/mo vs Vapi and $660/mo vs Retell.
+        </p>
+      </div>
+
+      <div style="margin-top: 1.25rem; background: #0f172a; border-radius: 12px; padding: 1.25rem;">
+        <h4 style="font-size: 0.9rem; color: #f8fafc; margin-bottom: 0.5rem;">vs. Contact Center cost</h4>
+        <table>
+          <thead><tr><th>Volume</th><th>Contact Center ($5/call)</th><th>Retell (current)</th><th>Vapi + Cartesia (rec)</th><th>DIY Budget</th></tr></thead>
+          <tbody>
+            <tr><td>500/mo</td><td class="poor">$2,500</td><td class="cost">$200</td><td class="cost">$160</td><td class="cost">$70</td></tr>
+            <tr><td>2,000/mo</td><td class="poor">$10,000</td><td class="cost">$800</td><td class="cost">$640</td><td class="cost">$280</td></tr>
+            <tr><td>10,000/mo</td><td class="poor">$50,000</td><td class="cost">$4,000</td><td class="cost">$3,200</td><td class="cost">$1,400</td></tr>
+            <tr><td>50,000/mo</td><td class="poor">$250,000</td><td class="cost">$20,000</td><td class="cost">$16,000</td><td class="cost">$7,000</td></tr>
+          </tbody>
+        </table>
+        <p style="font-size: 0.8rem; color: #64748b; margin-top: 0.75rem;">At every volume level, even the most expensive voice AI option is <strong style="color:#22c55e;">10-35x cheaper</strong> than a human contact center.</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function showPanel(id) {
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.getElementById('panel-' + id).classList.add('active');
+      event.target.classList.add('active');
+    }
+
+    Chart.defaults.color = '#94a3b8';
+    Chart.defaults.borderColor = '#334155';
+    Chart.defaults.font.family = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+
+    const scatterCtx = document.getElementById('scatterChart').getContext('2d');
+    new Chart(scatterCtx, {
+      type: 'bubble',
+      data: {
+        datasets: [
+          {
+            label: 'STT Providers',
+            data: [
+              { x: 0.006, y: 9.2, r: 16, label: 'Deepgram Nova-2' },
+              { x: 0.007, y: 8.8, r: 12, label: 'AssemblyAI' },
+              { x: 0.016, y: 7.5, r: 14, label: 'Google Chirp' },
+              { x: 0.016, y: 7.8, r: 10, label: 'Azure STT' },
+              { x: 0.015, y: 6.8, r: 11, label: 'AWS Transcribe' },
+              { x: 0.006, y: 5.0, r: 13, label: 'OpenAI Whisper*' },
+            ],
+            backgroundColor: 'rgba(34, 197, 94, 0.6)',
+            borderColor: '#22c55e',
+            borderWidth: 1,
+          },
+          {
+            label: 'TTS Providers',
+            data: [
+              { x: 0.05, y: 9.0, r: 12, label: 'Cartesia Sonic' },
+              { x: 0.03, y: 7.5, r: 8, label: 'LMNT' },
+              { x: 0.20, y: 9.8, r: 16, label: 'ElevenLabs' },
+              { x: 0.16, y: 9.0, r: 11, label: 'PlayHT 2.0' },
+              { x: 0.014, y: 6.5, r: 10, label: 'OpenAI TTS-1' },
+              { x: 0.014, y: 6.8, r: 13, label: 'Google Neural2' },
+              { x: 0.014, y: 7.0, r: 12, label: 'AWS Polly Neural' },
+              { x: 0.014, y: 7.5, r: 11, label: 'Azure Neural TTS' },
+            ],
+            backgroundColor: 'rgba(96, 165, 250, 0.6)',
+            borderColor: '#60a5fa',
+            borderWidth: 1,
+          },
+          {
+            label: 'All-in-One Platforms',
+            data: [
+              { x: 0.10, y: 8.5, r: 15, label: 'Retell AI' },
+              { x: 0.08, y: 8.8, r: 13, label: 'Vapi' },
+              { x: 0.09, y: 7.0, r: 10, label: 'Bland AI' },
+              { x: 0.06, y: 7.5, r: 9, label: 'PlayAI' },
+              { x: 0.03, y: 7.0, r: 8, label: 'Vocode (self-host)' },
+            ],
+            backgroundColor: 'rgba(245, 158, 11, 0.6)',
+            borderColor: '#f59e0b',
+            borderWidth: 1,
+          },
+          {
+            label: 'Current (Retell)',
+            data: [
+              { x: 0.10, y: 8.5, r: 18, label: 'Retell (current)' },
+            ],
+            backgroundColor: 'rgba(239, 68, 68, 0.15)',
+            borderColor: '#ef4444',
+            borderWidth: 3,
+            borderDash: [5, 5],
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: { title: { display: true, text: 'Cost per Minute ($)', font: { size: 13 } }, min: 0, max: 0.25, ticks: { callback: v => '$' + v.toFixed(3) } },
+          y: { title: { display: true, text: 'Quality Score (composite)', font: { size: 13 } }, min: 4, max: 10.5 }
+        },
+        plugins: {
+          tooltip: { callbacks: { label: function(ctx) { const d = ctx.raw; return d.label + ': $' + d.x.toFixed(3) + '/min, Quality: ' + d.y + '/10'; } } },
+          legend: { display: false }
+        }
+      }
+    });
+
+    const stackCtx = document.getElementById('stackChart').getContext('2d');
+    new Chart(stackCtx, {
+      type: 'bar',
+      data: {
+        labels: ['Retell\n(current)', 'Vapi +\nCartesia', 'Vapi +\nElevenLabs', 'DIY:\nDeepgram+\nCartesia', 'DIY:\nDeepgram+\nLMNT', 'DIY:\nDeepgram+\nPolly', 'Bland AI'],
+        datasets: [
+          { label: 'STT', data: [0.006, 0.006, 0.006, 0.006, 0.006, 0.006, 0.006], backgroundColor: '#22c55e' },
+          { label: 'TTS', data: [0.05, 0.05, 0.20, 0.05, 0.03, 0.014, 0.05], backgroundColor: '#60a5fa' },
+          { label: 'LLM (Claude Haiku)', data: [0.014, 0.014, 0.014, 0.014, 0.014, 0.014, 0.014], backgroundColor: '#a78bfa' },
+          { label: 'Platform fee', data: [0.03, 0.01, 0.01, 0, 0, 0, 0.02], backgroundColor: '#f59e0b' },
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: { x: { stacked: true }, y: { stacked: true, title: { display: true, text: '$/min' }, ticks: { callback: v => '$' + v.toFixed(2) } } },
+        plugins: {
+          tooltip: { callbacks: { afterBody: function(items) { const totals = [0.10, 0.08, 0.23, 0.07, 0.05, 0.034, 0.09]; return 'Total: $' + totals[items[0].dataIndex].toFixed(3) + '/min'; } } },
+          legend: { labels: { boxWidth: 12, padding: 16 } }
+        }
+      }
+    });
+
+    let volumeChartInstance = null;
+    function updateVolume() {
+      const calls = parseInt(document.getElementById('volumeSelect').value);
+      const dur = parseInt(document.getElementById('durationSelect').value);
+      const mins = calls * dur;
+      const retell = mins * 0.10;
+      const vapi = mins * 0.08;
+      const diy = mins * 0.05;
+      const contact = calls * 5;
+      document.getElementById('kpi-retell').textContent = '$' + retell.toLocaleString();
+      document.getElementById('kpi-vapi').textContent = '$' + vapi.toLocaleString();
+      document.getElementById('kpi-diy').textContent = '$' + diy.toLocaleString();
+      document.getElementById('kpi-contact').textContent = '$' + contact.toLocaleString();
+      if (volumeChartInstance) volumeChartInstance.destroy();
+      const ctx = document.getElementById('volumeChart').getContext('2d');
+      volumeChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: ['Contact Center\n(human)', 'Retell\n(current)', 'Vapi + Cartesia\n(recommended)', 'DIY: Deepgram\n+ LMNT (budget)'],
+          datasets: [{ data: [contact, retell, vapi, diy], backgroundColor: ['#ef4444', '#f59e0b', '#22c55e', '#60a5fa'], borderRadius: 6 }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+          scales: { x: { ticks: { callback: v => '$' + v.toLocaleString() } } },
+          plugins: {
+            legend: { display: false },
+            tooltip: { callbacks: {
+              label: ctx => '$' + ctx.raw.toLocaleString() + '/mo',
+              afterLabel: ctx => { const savings = (calls * 5) - ctx.raw; const pct = Math.round((savings / (calls * 5)) * 100); return ctx.dataIndex === 0 ? '' : 'Saves $' + savings.toLocaleString() + '/mo (' + pct + '% reduction)'; }
+            }}
+          }
+        }
+      });
+    }
+    updateVolume();
+  </script>
+</body>
+</html>
