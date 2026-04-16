@@ -71,7 +71,12 @@ function cleanForVoice(text) {
   cleaned = cleaned.replace(/\.\s*\./g, '.');      // collapse double periods
   cleaned = cleaned.replace(/^\s+|\s+$/g, '');     // trim
 
-  // 6. Ensure response isn't empty after cleaning
+  // 6. Insert a short SSML pause between sentences so the bot doesn't
+  // run its sentences together. Retell forwards break tags to ElevenLabs.
+  // Applied last so earlier regexes aren't confused by the tag.
+  cleaned = cleaned.replace(/([.!?])\s+(?=[A-Z0-9"'])/g, '$1 <break time="350ms"/> ');
+
+  // 7. Ensure response isn't empty after cleaning
   if (!cleaned.trim()) {
     return null; // Signal to caller that nothing should be spoken
   }

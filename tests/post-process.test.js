@@ -59,6 +59,18 @@ describe('cleanForVoice', () => {
   test('handles null input', () => {
     expect(cleanForVoice(null)).toBeNull();
   });
+
+  test('inserts SSML break between sentences', () => {
+    const result = cleanForVoice('Got it. What works best for you?');
+    expect(result).toContain('<break time="350ms"/>');
+    // Break tag should sit between the two sentences.
+    expect(result).toMatch(/Got it\. <break time="350ms"\/> What/);
+  });
+
+  test('does not add break after final sentence', () => {
+    const result = cleanForVoice('Single sentence here.');
+    expect(result).not.toContain('<break');
+  });
 });
 
 describe('enforceBrevity', () => {
