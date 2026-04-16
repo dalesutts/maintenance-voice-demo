@@ -135,6 +135,24 @@ describeIfLLM('Conversation Rules (LLM)', () => {
     expect(text).toMatch(/where|base|handle|underneath|floor|cabinet|sink|basin|drip|steady/i);
   }, 15000);
 
+  test('accepts vendor-coordinated work (tree on fence) as maintenance', async () => {
+    // Regression: bot used to decline tree/fence damage as "not something we handle"
+    // because it felt like a specialist job. It's still a maintenance intake.
+    const response = await getClaudeResponse([
+      { role: 'assistant', content: "Got it, I have that property. What maintenance issue are you experiencing?" },
+      { role: 'user', content: "A tree fell in the backyard and broke part of the fence" },
+    ]);
+    const text = getTextContent(response).toLowerCase();
+    const toolCalls = getToolCalls(response);
+    // Must NOT route the call out of scope or tell the resident we don't handle this.
+    expect(toolCalls.find(t => t.name === 'route_and_end_call')).toBeUndefined();
+    expect(text).not.toMatch(/don'?t (handle|do|cover)|can'?t help|not something we/i);
+    // Should engage with the issue — ask a clarifying question or classify.
+    const engaged = /tree|fence|backyard|where|how big|damage|hurt|anyone/i.test(text)
+      || toolCalls.some(t => t.name === 'classify_and_evaluate');
+    expect(engaged).toBe(true);
+  }, 15000);
+
 }, 60000);
 
 describeIfLLM('Emergency Detection (LLM)', () => {
