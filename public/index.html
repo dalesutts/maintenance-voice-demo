@@ -48,7 +48,7 @@
     .call-status.connected { color: #22c55e; }
 
     /* Mic select */
-    .mic-row { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem; }
+    .mic-row { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem; }
     .mic-row select {
       flex: 1; background: #1e293b; color: #e2e8f0; border: 1px solid #334155;
       border-radius: 6px; padding: 0.3rem 0.5rem; font-size: 0.8rem;
@@ -57,6 +57,20 @@
       background: #334155; color: #e2e8f0; border: none; padding: 0.3rem 0.75rem;
       border-radius: 6px; cursor: pointer; font-size: 0.8rem;
     }
+    .mic-row button.active { background: #0ea5e9; }
+    .mic-meter {
+      margin-bottom: 1rem; height: 6px; background: #1e293b; border-radius: 3px;
+      overflow: hidden; position: relative;
+    }
+    .mic-meter-fill {
+      height: 100%; width: 0%; background: linear-gradient(90deg, #22c55e, #eab308, #ef4444);
+      transition: width 60ms linear;
+    }
+    .mic-status {
+      font-size: 0.75rem; color: #64748b; margin-bottom: 1rem; min-height: 1em;
+    }
+    .mic-status.error { color: #f87171; }
+    .mic-status.ok { color: #22c55e; }
 
     /* Transcript */
     .transcript {
@@ -113,8 +127,10 @@
 
       <div class="mic-row">
         <select id="micSelect"></select>
-        <button onclick="testMic()">Test Mic</button>
+        <button id="testMicBtn" onclick="testMic()">Test Mic</button>
       </div>
+      <div class="mic-meter"><div class="mic-meter-fill" id="micMeter"></div></div>
+      <div class="mic-status" id="micStatus">Click "Test Mic" and speak — you should see the bar move.</div>
 
       <div class="controls">
         <button class="call-btn" id="callBtn" onclick="toggleCall()">
@@ -203,38 +219,126 @@
     window.testMic = testMic;
 
     // --- Mic setup ---
+    function setMicStatus(msg, cls = '') {
+      const el = document.getElementById('micStatus');
+      el.textContent = msg;
+      el.className = 'mic-status ' + cls;
+    }
+
+    function describeMediaError(e) {
+      const name = e && e.name;
+      if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+        return 'Microphone access blocked. Click the camera/mic icon in your browser address bar and allow this site.';
+      }
+      if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+        return 'No microphone detected. Plug one in or choose a different device.';
+      }
+      if (name === 'NotReadableError' || name === 'TrackStartError') {
+        return 'Microphone is in use by another app (Zoom, Teams, etc). Close it and try again.';
+      }
+      if (name === 'OverconstrainedError') {
+        return 'Selected microphone is unavailable. Pick a different one from the dropdown.';
+      }
+      if (name === 'SecurityError') {
+        return 'Blocked because this page is not served over HTTPS.';
+      }
+      return (e && e.message) || 'Unknown microphone error.';
+    }
+
     async function loadMics() {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setMicStatus('This browser does not support microphone capture.', 'error');
+        return;
+      }
       try {
-        await navigator.mediaDevices.getUserMedia({ audio: true });
+        // Request permission first so device labels are populated.
+        const primer = await navigator.mediaDevices.getUserMedia({ audio: true });
+        primer.getTracks().forEach(t => t.stop());
+
         const devices = await navigator.mediaDevices.enumerateDevices();
         const mics = devices.filter(d => d.kind === 'audioinput');
         const select = document.getElementById('micSelect');
         select.innerHTML = '';
+        if (mics.length === 0) {
+          setMicStatus('No microphones found.', 'error');
+          return;
+        }
         mics.forEach((mic, i) => {
           const opt = document.createElement('option');
           opt.value = mic.deviceId;
           opt.textContent = mic.label || `Microphone ${i + 1}`;
           select.appendChild(opt);
         });
-      } catch(e) {}
+        setMicStatus(`${mics.length} microphone${mics.length === 1 ? '' : 's'} available. Click "Test Mic" and speak.`);
+      } catch (e) {
+        setMicStatus(describeMediaError(e), 'error');
+      }
     }
     loadMics();
 
+    // Re-enumerate when devices change (plug/unplug headphones, etc.)
+    if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+      navigator.mediaDevices.addEventListener('devicechange', loadMics);
+    }
+
     async function testMic() {
-      if (testStream) { testStream.getTracks().forEach(t => t.stop()); testStream = null; return; }
+      const btn = document.getElementById('testMicBtn');
+      const meter = document.getElementById('micMeter');
+
+      // Toggle off if already running
+      if (testStream) {
+        testStream.getTracks().forEach(t => t.stop());
+        testStream = null;
+        btn.textContent = 'Test Mic';
+        btn.classList.remove('active');
+        meter.style.width = '0%';
+        setMicStatus('Stopped.');
+        return;
+      }
+
       const deviceId = document.getElementById('micSelect').value;
       try {
-        testStream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: deviceId ? { exact: deviceId } : undefined } });
-        const ctx = new AudioContext();
-        const analyser = ctx.createAnalyser(); analyser.fftSize = 256;
+        testStream = await navigator.mediaDevices.getUserMedia({
+          audio: deviceId ? { deviceId: { exact: deviceId } } : true,
+        });
+        btn.textContent = 'Stop';
+        btn.classList.add('active');
+        setMicStatus('Listening — speak now. Bar should move with your voice.', 'ok');
+
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.7;
         ctx.createMediaStreamSource(testStream).connect(analyser);
         const data = new Uint8Array(analyser.frequencyBinCount);
+
+        let lastSoundAt = 0;
         (function update() {
-          if (!testStream) return;
+          if (!testStream) { ctx.close().catch(() => {}); return; }
           analyser.getByteFrequencyData(data);
+          // Mean amplitude across bins → 0–100% bar
+          let sum = 0;
+          for (let i = 0; i < data.length; i++) sum += data[i];
+          const avg = sum / data.length;          // 0–255
+          const pct = Math.min(100, Math.round((avg / 128) * 100));
+          meter.style.width = pct + '%';
+          if (pct > 5) lastSoundAt = Date.now();
           requestAnimationFrame(update);
         })();
-      } catch(e) {}
+
+        // If no sound heard in 5s, surface a hint
+        setTimeout(() => {
+          if (!testStream) return;
+          if (!lastSoundAt || Date.now() - lastSoundAt > 4500) {
+            setMicStatus('No audio detected. Check that the right mic is selected and that it is unmuted.', 'error');
+          }
+        }, 5000);
+      } catch (e) {
+        setMicStatus(describeMediaError(e), 'error');
+        testStream = null;
+        btn.textContent = 'Test Mic';
+        btn.classList.remove('active');
+      }
     }
 
     // --- UI helpers ---
@@ -423,7 +527,14 @@
           setStatus('Error: ' + (error.message || error), 'error');
         });
 
-        if (testStream) { testStream.getTracks().forEach(t => t.stop()); testStream = null; }
+        if (testStream) {
+          testStream.getTracks().forEach(t => t.stop());
+          testStream = null;
+          const testBtn = document.getElementById('testMicBtn');
+          if (testBtn) { testBtn.textContent = 'Test Mic'; testBtn.classList.remove('active'); }
+          const meter = document.getElementById('micMeter');
+          if (meter) meter.style.width = '0%';
+        }
         const selectedMic = document.getElementById('micSelect').value;
         await retellClient.startCall({ accessToken: access_token, captureDeviceId: selectedMic || undefined });
 
