@@ -6,6 +6,7 @@ const { createServer } = require('http');
 const { WebSocketServer } = require('ws');
 const Anthropic = require('@anthropic-ai/sdk').default;
 const fs = require('fs');
+const crypto = require('crypto');
 
 // Tool handlers
 const { lookupProperty, lookupPropertyTool } = require('./tools/lookup-property');
@@ -13,6 +14,7 @@ const { classifyAndEvaluate, classifyAndEvaluateTool } = require('./tools/classi
 const { collectAvailability, collectAvailabilityTool } = require('./tools/collect-availability');
 const { createServiceRequest, createServiceRequestTool } = require('./tools/create-sr');
 const { sendPhotoSms, sendPhotoSmsTool } = require('./tools/send-photo-sms');
+const { routeAndEnd, routeAndEndTool } = require('./tools/route-and-end');
 const { cleanForVoice, enforceBrevity } = require('./post-process');
 
 // --- Configuration ---
@@ -36,6 +38,7 @@ const tools = [
   collectAvailabilityTool,
   createServiceRequestTool,
   sendPhotoSmsTool,
+  routeAndEndTool,
 ];
 
 // Tool execution dispatcher
@@ -45,12 +48,26 @@ const toolHandlers = {
   collect_availability: collectAvailability,
   create_service_request: createServiceRequest,
   send_photo_sms: sendPhotoSms,
+  route_and_end_call: routeAndEnd,
 };
 
 // --- Express App ---
 const app = express();
 const cors = require('cors');
-app.use(cors());
+
+// CORS: restrict to known origins. Configure via ALLOWED_ORIGINS env var
+// (comma-separated). Defaults cover local dev and the Render demo host.
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ||
+  'http://localhost:8080,https://maintenance-voice-demo.onrender.com')
+  .split(',').map(s => s.trim()).filter(Boolean);
+
+app.use(cors({
+  origin: (origin, cb) => {
+    // Allow same-origin / curl (no Origin header) and any configured origin.
+    if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+    cb(new Error(`Origin ${origin} not allowed`));
+  },
+}));
 app.use(express.json());
 
 // Health check
@@ -58,15 +75,45 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'maintenance-voice-demo' });
 });
 
+// Short-lived SSE subscription tokens keyed by callId. Issued at call creation,
+// required on GET /events/:callId, auto-expire 1 hour after issue.
+const sseTokens = new Map(); // callId -> { token, expiresAt }
+const SSE_TOKEN_TTL_MS = 60 * 60 * 1000;
+
+function issueSseToken(callId) {
+  const token = crypto.randomBytes(24).toString('hex');
+  const expiresAt = Date.now() + SSE_TOKEN_TTL_MS;
+  sseTokens.set(callId, { token, expiresAt });
+  setTimeout(() => {
+    const current = sseTokens.get(callId);
+    if (current && current.token === token) sseTokens.delete(callId);
+  }, SSE_TOKEN_TTL_MS).unref?.();
+  return token;
+}
+
 // Web Call Registration Endpoint
+// If DEMO_SECRET is set in env, require the `X-Demo-Secret` header to match.
+// This lets Sutton share the Render URL selectively without burning Retell/Claude
+// credits if the URL leaks.
 app.post('/create-web-call', async (req, res) => {
+  if (process.env.DEMO_SECRET) {
+    const provided = req.get('x-demo-secret') || req.body?.demo_secret;
+    if (provided !== process.env.DEMO_SECRET) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+  }
   try {
     const Retell = require('retell-sdk').default;
     const client = new Retell({ apiKey: process.env.RETELL_API_KEY });
     const webCall = await client.call.createWebCall({
       agent_id: req.body.agent_id || process.env.RETELL_AGENT_ID,
     });
-    res.json({ access_token: webCall.access_token, call_id: webCall.call_id });
+    const sseToken = issueSseToken(webCall.call_id);
+    res.json({
+      access_token: webCall.access_token,
+      call_id: webCall.call_id,
+      sse_token: sseToken,
+    });
   } catch (error) {
     console.error('Failed to create web call:', error.message);
     res.status(500).json({ error: error.message });
@@ -84,11 +131,23 @@ const sseClients = new Map(); // callId -> Set of response objects
 
 app.get('/events/:callId', (req, res) => {
   const callId = req.params.callId;
+
+  // Require a valid short-lived token issued at call creation time.
+  // This prevents anyone who guesses / overhears a callId from tapping the
+  // live tool-result stream (which includes resident PII).
+  const provided = req.query.token;
+  const entry = sseTokens.get(callId);
+  if (!entry || entry.token !== provided || entry.expiresAt < Date.now()) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  const origin = req.get('origin');
+  const allowOrigin = origin && ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
     'Connection': 'keep-alive',
-    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Origin': allowOrigin,
   });
   res.write('data: {"type":"connected"}\n\n');
 
@@ -283,6 +342,12 @@ async function callClaudeAndRespond(ws, callId, state, responseId, startTime) {
         // Cache property context
         if (block.name === 'lookup_property') state.propertyContext = result;
 
+        // Flag the call for end-after-next-response when a routing tool says so
+        if (result && result.end_call) {
+          state.endCallAfterNext = true;
+          emitSSE(callId, { type: 'routing', reason: result.reason, department: result.department });
+        }
+
         // Emit tool result to browser UI
         emitSSE(callId, { type: 'tool_result', tool: block.name, result: result });
 
@@ -310,7 +375,12 @@ async function callClaudeAndRespond(ws, callId, state, responseId, startTime) {
     let finalText = enforceBrevity(cleanForVoice(textParts.join(' ')));
     if (!finalText) return; // Post-processing removed everything — skip
     console.log(`[CALL ${callId}] Response (${Date.now() - startTime}ms): "${finalText.substring(0, 80)}..."`);
-    ws.send(JSON.stringify({ response_id: responseId, content: finalText, content_complete: true }));
+    const payload = { response_id: responseId, content: finalText, content_complete: true };
+    if (state.endCallAfterNext) {
+      payload.end_call = true;
+      console.log(`[CALL ${callId}] Ending call after this response (routing)`);
+    }
+    ws.send(JSON.stringify(payload));
 
     // Detect priority from Claude's response text and emit to UI
     const lower = finalText.toLowerCase();
@@ -338,8 +408,11 @@ function extractLatestUserMessage(transcript) {
 }
 
 // --- Start Server ---
-httpServer.listen(PORT, () => {
-  console.log(`
+// Only auto-listen when run directly (node src/server.js). When imported by
+// tests, the test harness creates its own ephemeral listener.
+if (require.main === module) {
+  httpServer.listen(PORT, () => {
+    console.log(`
 ╔════════════════════════════════════════════════════╗
 ║   Maintenance Voice Demo — Custom LLM Server       ║
 ╠════════════════════════════════════════════════════╣
@@ -348,7 +421,8 @@ httpServer.listen(PORT, () => {
 ║   Model:     ${CLAUDE_MODEL}            ║
 ║   Tools:     ${tools.length} registered                           ║
 ╚════════════════════════════════════════════════════╝
-  `);
-});
+    `);
+  });
+}
 
 module.exports = { app, httpServer };

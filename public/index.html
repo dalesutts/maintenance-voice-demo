@@ -346,9 +346,10 @@
     }
 
     // --- SSE: receive tool call events from server ---
-    function startEventStream(callId) {
+    function startEventStream(callId, sseToken) {
       if (eventSource) eventSource.close();
-      eventSource = new EventSource(`${SERVER_URL}/events/${callId}`);
+      const url = `${SERVER_URL}/events/${callId}?token=${encodeURIComponent(sseToken)}`;
+      eventSource = new EventSource(url);
       eventSource.onmessage = (e) => {
         try {
           const data = JSON.parse(e.data);
@@ -361,6 +362,10 @@
           }
           if (data.type === 'priority') updatePriority(data.level, data.scheduling);
           if (data.type === 'latency') updateLatency(data.ms);
+          if (data.type === 'routing') {
+            const labels = { status_update: 'Transferring to Operator (status update)', other_department: `Transferring to ${data.department}`, out_of_scope: 'Ending call (out of scope)' };
+            setStatus(labels[data.reason] || 'Transferring...');
+          }
         } catch(err) {}
       };
     }
@@ -381,11 +386,11 @@
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({})
         });
         if (!resp.ok) throw new Error((await resp.json()).error || 'Failed');
-        const { access_token, call_id } = await resp.json();
+        const { access_token, call_id, sse_token } = await resp.json();
         currentCallId = call_id;
 
-        // Start SSE stream for tool results
-        startEventStream(call_id);
+        // Start SSE stream for tool results (token-gated)
+        startEventStream(call_id, sse_token);
 
         retellClient = new RetellWebClient();
 

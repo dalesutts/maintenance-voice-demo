@@ -59,7 +59,7 @@ describe('Taxonomy Classification', () => {
       ['Heater stopped heating', 'not heating'],
       ['Garbage disposal making grinding noise', 'sounds noisy'],
       ['Door wont open', 'not opening or closing'],
-      ['Smoke detector wont turn on', 'not working'],
+      ['Smoke detector wont turn on', 'not turning on or off'],
       ['I smell gas', 'smells'],
       ['Toilet keeps running', 'running'],
       ['Basement is flooding', 'flooding'],
