@@ -205,141 +205,168 @@
     </div>
   </div>
 
+  <!--
+    Mic test runs as a classic script (NOT a module) so it's independent of
+    the Retell SDK import below. If esm.sh is slow/unreachable the module
+    fails silently, but the mic test still works.
+  -->
+  <script>
+    (function () {
+      let testStream = null;
+
+      function setMicStatus(msg, cls) {
+        const el = document.getElementById('micStatus');
+        if (!el) return;
+        el.textContent = msg;
+        el.className = 'mic-status ' + (cls || '');
+      }
+
+      function describeMediaError(e) {
+        const name = e && e.name;
+        if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+          return 'Microphone access blocked. Click the camera/mic icon in your browser address bar and allow this site.';
+        }
+        if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+          return 'No microphone detected. Plug one in or choose a different device.';
+        }
+        if (name === 'NotReadableError' || name === 'TrackStartError') {
+          return 'Microphone is in use by another app (Zoom, Teams, etc). Close it and try again.';
+        }
+        if (name === 'OverconstrainedError') {
+          return 'Selected microphone is unavailable. Pick a different one from the dropdown.';
+        }
+        if (name === 'SecurityError') {
+          return 'Blocked because this page is not served over HTTPS.';
+        }
+        return (e && e.message) || 'Unknown microphone error.';
+      }
+
+      async function loadMics() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          setMicStatus('This browser does not support microphone capture.', 'error');
+          return;
+        }
+        try {
+          const primer = await navigator.mediaDevices.getUserMedia({ audio: true });
+          primer.getTracks().forEach(t => t.stop());
+
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const mics = devices.filter(d => d.kind === 'audioinput');
+          const select = document.getElementById('micSelect');
+          select.innerHTML = '';
+          if (mics.length === 0) {
+            setMicStatus('No microphones found.', 'error');
+            return;
+          }
+          mics.forEach((mic, i) => {
+            const opt = document.createElement('option');
+            opt.value = mic.deviceId;
+            opt.textContent = mic.label || ('Microphone ' + (i + 1));
+            select.appendChild(opt);
+          });
+          setMicStatus(mics.length + ' microphone' + (mics.length === 1 ? '' : 's') + ' available. Click "Test Mic" and speak.');
+        } catch (e) {
+          setMicStatus(describeMediaError(e), 'error');
+        }
+      }
+
+      async function testMic() {
+        const btn = document.getElementById('testMicBtn');
+        const meter = document.getElementById('micMeter');
+
+        if (testStream) {
+          testStream.getTracks().forEach(t => t.stop());
+          testStream = null;
+          btn.textContent = 'Test Mic';
+          btn.classList.remove('active');
+          meter.style.width = '0%';
+          setMicStatus('Stopped.');
+          return;
+        }
+
+        const deviceId = document.getElementById('micSelect').value;
+        try {
+          testStream = await navigator.mediaDevices.getUserMedia({
+            audio: deviceId ? { deviceId: { exact: deviceId } } : true,
+          });
+          btn.textContent = 'Stop';
+          btn.classList.add('active');
+          setMicStatus('Listening — speak now. Bar should move with your voice.', 'ok');
+
+          const Ctx = window.AudioContext || window.webkitAudioContext;
+          const ctx = new Ctx();
+          const analyser = ctx.createAnalyser();
+          analyser.fftSize = 256;
+          analyser.smoothingTimeConstant = 0.7;
+          ctx.createMediaStreamSource(testStream).connect(analyser);
+          const data = new Uint8Array(analyser.frequencyBinCount);
+
+          let lastSoundAt = 0;
+          (function update() {
+            if (!testStream) { ctx.close().catch(function () {}); return; }
+            analyser.getByteFrequencyData(data);
+            let sum = 0;
+            for (let i = 0; i < data.length; i++) sum += data[i];
+            const avg = sum / data.length;
+            const pct = Math.min(100, Math.round((avg / 128) * 100));
+            meter.style.width = pct + '%';
+            if (pct > 5) lastSoundAt = Date.now();
+            requestAnimationFrame(update);
+          })();
+
+          setTimeout(function () {
+            if (!testStream) return;
+            if (!lastSoundAt || Date.now() - lastSoundAt > 4500) {
+              setMicStatus('No audio detected. Check that the right mic is selected and that it is unmuted.', 'error');
+            }
+          }, 5000);
+        } catch (e) {
+          setMicStatus(describeMediaError(e), 'error');
+          testStream = null;
+          btn.textContent = 'Test Mic';
+          btn.classList.remove('active');
+        }
+      }
+
+      // Called by the Retell module right before a call starts so we release
+      // the test stream and reset the UI.
+      function stopTestMic() {
+        if (!testStream) return;
+        testStream.getTracks().forEach(t => t.stop());
+        testStream = null;
+        const btn = document.getElementById('testMicBtn');
+        if (btn) { btn.textContent = 'Test Mic'; btn.classList.remove('active'); }
+        const meter = document.getElementById('micMeter');
+        if (meter) meter.style.width = '0%';
+      }
+
+      // Expose to inline onclick handlers and the module below.
+      window.testMic = testMic;
+      window.stopTestMic = stopTestMic;
+
+      // Kick off device enumeration once DOM is ready.
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', loadMics);
+      } else {
+        loadMics();
+      }
+
+      if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+        navigator.mediaDevices.addEventListener('devicechange', loadMics);
+      }
+    })();
+  </script>
+
   <script type="module">
     import { RetellWebClient } from 'https://esm.sh/retell-client-js-sdk@2.0.7';
 
     const SERVER_URL = window.location.origin;
     let retellClient = null;
     let isCallActive = false;
-    let testStream = null;
     let currentCallId = null;
     let eventSource = null;
 
     window.toggleCall = toggleCall;
-    window.testMic = testMic;
-
-    // --- Mic setup ---
-    function setMicStatus(msg, cls = '') {
-      const el = document.getElementById('micStatus');
-      el.textContent = msg;
-      el.className = 'mic-status ' + cls;
-    }
-
-    function describeMediaError(e) {
-      const name = e && e.name;
-      if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
-        return 'Microphone access blocked. Click the camera/mic icon in your browser address bar and allow this site.';
-      }
-      if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
-        return 'No microphone detected. Plug one in or choose a different device.';
-      }
-      if (name === 'NotReadableError' || name === 'TrackStartError') {
-        return 'Microphone is in use by another app (Zoom, Teams, etc). Close it and try again.';
-      }
-      if (name === 'OverconstrainedError') {
-        return 'Selected microphone is unavailable. Pick a different one from the dropdown.';
-      }
-      if (name === 'SecurityError') {
-        return 'Blocked because this page is not served over HTTPS.';
-      }
-      return (e && e.message) || 'Unknown microphone error.';
-    }
-
-    async function loadMics() {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        setMicStatus('This browser does not support microphone capture.', 'error');
-        return;
-      }
-      try {
-        // Request permission first so device labels are populated.
-        const primer = await navigator.mediaDevices.getUserMedia({ audio: true });
-        primer.getTracks().forEach(t => t.stop());
-
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const mics = devices.filter(d => d.kind === 'audioinput');
-        const select = document.getElementById('micSelect');
-        select.innerHTML = '';
-        if (mics.length === 0) {
-          setMicStatus('No microphones found.', 'error');
-          return;
-        }
-        mics.forEach((mic, i) => {
-          const opt = document.createElement('option');
-          opt.value = mic.deviceId;
-          opt.textContent = mic.label || `Microphone ${i + 1}`;
-          select.appendChild(opt);
-        });
-        setMicStatus(`${mics.length} microphone${mics.length === 1 ? '' : 's'} available. Click "Test Mic" and speak.`);
-      } catch (e) {
-        setMicStatus(describeMediaError(e), 'error');
-      }
-    }
-    loadMics();
-
-    // Re-enumerate when devices change (plug/unplug headphones, etc.)
-    if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
-      navigator.mediaDevices.addEventListener('devicechange', loadMics);
-    }
-
-    async function testMic() {
-      const btn = document.getElementById('testMicBtn');
-      const meter = document.getElementById('micMeter');
-
-      // Toggle off if already running
-      if (testStream) {
-        testStream.getTracks().forEach(t => t.stop());
-        testStream = null;
-        btn.textContent = 'Test Mic';
-        btn.classList.remove('active');
-        meter.style.width = '0%';
-        setMicStatus('Stopped.');
-        return;
-      }
-
-      const deviceId = document.getElementById('micSelect').value;
-      try {
-        testStream = await navigator.mediaDevices.getUserMedia({
-          audio: deviceId ? { deviceId: { exact: deviceId } } : true,
-        });
-        btn.textContent = 'Stop';
-        btn.classList.add('active');
-        setMicStatus('Listening — speak now. Bar should move with your voice.', 'ok');
-
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
-        const analyser = ctx.createAnalyser();
-        analyser.fftSize = 256;
-        analyser.smoothingTimeConstant = 0.7;
-        ctx.createMediaStreamSource(testStream).connect(analyser);
-        const data = new Uint8Array(analyser.frequencyBinCount);
-
-        let lastSoundAt = 0;
-        (function update() {
-          if (!testStream) { ctx.close().catch(() => {}); return; }
-          analyser.getByteFrequencyData(data);
-          // Mean amplitude across bins → 0–100% bar
-          let sum = 0;
-          for (let i = 0; i < data.length; i++) sum += data[i];
-          const avg = sum / data.length;          // 0–255
-          const pct = Math.min(100, Math.round((avg / 128) * 100));
-          meter.style.width = pct + '%';
-          if (pct > 5) lastSoundAt = Date.now();
-          requestAnimationFrame(update);
-        })();
-
-        // If no sound heard in 5s, surface a hint
-        setTimeout(() => {
-          if (!testStream) return;
-          if (!lastSoundAt || Date.now() - lastSoundAt > 4500) {
-            setMicStatus('No audio detected. Check that the right mic is selected and that it is unmuted.', 'error');
-          }
-        }, 5000);
-      } catch (e) {
-        setMicStatus(describeMediaError(e), 'error');
-        testStream = null;
-        btn.textContent = 'Test Mic';
-        btn.classList.remove('active');
-      }
-    }
 
     // --- UI helpers ---
     function setStatus(msg, cls = '') {
@@ -527,14 +554,7 @@
           setStatus('Error: ' + (error.message || error), 'error');
         });
 
-        if (testStream) {
-          testStream.getTracks().forEach(t => t.stop());
-          testStream = null;
-          const testBtn = document.getElementById('testMicBtn');
-          if (testBtn) { testBtn.textContent = 'Test Mic'; testBtn.classList.remove('active'); }
-          const meter = document.getElementById('micMeter');
-          if (meter) meter.style.width = '0%';
-        }
+        if (typeof window.stopTestMic === 'function') window.stopTestMic();
         const selectedMic = document.getElementById('micSelect').value;
         await retellClient.startCall({ accessToken: access_token, captureDeviceId: selectedMic || undefined });
 
