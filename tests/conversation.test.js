@@ -202,4 +202,80 @@ describeIfLLM('Emergency Detection (LLM)', () => {
     expect(text).not.toMatch(/emergency|urgent|fast.?track|right away|priorit/i);
   }, 15000);
 
+  test('dead refrigerator is emergency (food spoilage)', async () => {
+    const propertyContext = { found: true, property: { state: 'CA' }, unit: { full_bathrooms: 2 } };
+    const response = await getClaudeResponse([
+      { role: 'assistant', content: "Got it, I have that property. What maintenance issue are you experiencing?" },
+      { role: 'user', content: "My refrigerator completely died last night. Nothing is cold and my food is going bad." },
+      { role: 'assistant', content: [{ type: 'tool_use', id: 'tool_fridge', name: 'classify_and_evaluate', input: { issue_description: 'Refrigerator dead, not cooling, food spoiling', property_context: propertyContext } }] },
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tool_fridge', content: JSON.stringify({ taxonomy: { category: 'appliances', item: 'refrigerator', symptom: 'not cooling' }, property_signals: { state: 'CA', bathrooms: 2 } }) }] },
+    ]);
+    const text = getTextContent(response).toLowerCase();
+    expect(text).toMatch(/today|tomorrow|right away|priorit|soon as possible/i);
+  }, 15000);
+
+  test('broken entry lock is emergency (safety)', async () => {
+    const response = await getClaudeResponse([
+      { role: 'assistant', content: "Got it, I have that property. What maintenance issue are you experiencing?" },
+      { role: 'user', content: "My front door lock is broken — I can't lock my front door at all, it won't engage." },
+    ]);
+    const text = getTextContent(response).toLowerCase();
+    // Should either treat as emergency OR ask a clarifying question — must NOT route out-of-scope
+    const toolCalls = getToolCalls(response);
+    expect(toolCalls.find(t => t.name === 'route_and_end_call')).toBeUndefined();
+    expect(text).not.toMatch(/don'?t (handle|do|cover)|can'?t help/i);
+  }, 15000);
+
+  test('pest infestation is accepted as maintenance (vendor-coordinated)', async () => {
+    const response = await getClaudeResponse([
+      { role: 'assistant', content: "Got it, I have that property. What maintenance issue are you experiencing?" },
+      { role: 'user', content: "I've got rats in the attic, I can hear them at night and found droppings" },
+    ]);
+    const text = getTextContent(response).toLowerCase();
+    const toolCalls = getToolCalls(response);
+    // Should NOT decline as "call a pest service yourself"
+    expect(toolCalls.find(t => t.name === 'route_and_end_call')).toBeUndefined();
+    expect(text).not.toMatch(/don'?t (handle|do|cover)|call (a |an )?(pest|exterminator)|not something we/i);
+  }, 15000);
+
+  test('active roof leak during storm escalates severity', async () => {
+    const propertyContext = { found: true, property: { state: 'WA' }, unit: { full_bathrooms: 2 }, ambient_conditions: { rainfall_forecast_24h: true } };
+    const response = await getClaudeResponse([
+      { role: 'assistant', content: "Got it, I have that property. What maintenance issue are you experiencing?" },
+      { role: 'user', content: "Water is pouring through my ceiling from the roof. It's storming outside right now and I'm catching it in buckets." },
+      { role: 'assistant', content: [{ type: 'tool_use', id: 'tool_roof', name: 'classify_and_evaluate', input: { issue_description: 'Water pouring from ceiling, active roof leak, storm outside', property_context: propertyContext } }] },
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tool_roof', content: JSON.stringify({ taxonomy: { category: 'exterior', item: 'roof', symptom: 'severe leaking' }, property_signals: { state: 'WA', rainfall_forecast_24h: true } }) }] },
+    ]);
+    const text = getTextContent(response).toLowerCase();
+    expect(text).toMatch(/today|tomorrow|right away|priorit|soon as possible/i);
+  }, 15000);
+
+  test('cosmetic cabinet issue is NOT emergency', async () => {
+    const response = await getClaudeResponse([
+      { role: 'assistant', content: "Got it, I have that property. What maintenance issue are you experiencing?" },
+      { role: 'user', content: "One of my kitchen cabinet doors has come loose at the hinge — still attached, just wobbly." },
+    ]);
+    const text = getTextContent(response).toLowerCase();
+    expect(text).not.toMatch(/emergency|today|right away/i);
+  }, 15000);
+
+  test('status-update call triggers operator transfer flow', async () => {
+    const response = await getClaudeResponse([
+      { role: 'user', content: "Hi, I put in a maintenance request last week and I'm calling for an update on when the plumber is coming out." },
+    ]);
+    const text = getTextContent(response).toLowerCase();
+    // Should offer operator transfer, not try to look up SR status
+    expect(text).toMatch(/operator|transfer|look that up|can'?t pull/i);
+  }, 15000);
+
+  test('rent payment question routes to Accounting, not maintenance', async () => {
+    const response = await getClaudeResponse([
+      { role: 'user', content: "I'm calling because my rent payment didn't go through and I got a late fee I need reversed." },
+    ]);
+    const text = getTextContent(response).toLowerCase();
+    // Should mention accounting or transferring — not start maintenance intake
+    expect(text).toMatch(/accounting|billing|transfer|not maintenance|different team|right team/i);
+    expect(text).not.toMatch(/what maintenance issue|what'?s going on with the (home|property|unit)/i);
+  }, 15000);
+
 }, 60000);
