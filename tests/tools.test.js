@@ -80,6 +80,58 @@ describe('Availability Collection', () => {
     const result = collectAvailability({ verbal_availability: 'any time works', priority: 'Standard' });
     expect(result.time_window).toContain('Any');
   });
+
+  test('resolves a spoken weekday to the upcoming date', () => {
+    const result = collectAvailability({
+      verbal_availability: 'Thursday afternoon works',
+      priority: 'Standard',
+    });
+    expect(result.scheduled_date).toContain('Thursday');
+    expect(result.time_window).toContain('Afternoon');
+  });
+
+  test('resolves "Thursday of next week" when today is Thursday', () => {
+    // Simulate: today is Thursday. Resident says Thursday of next week.
+    // Should land on a Thursday 7 days out, not today and not 14 days out.
+    const thursday = new Date();
+    thursday.setDate(thursday.getDate() + ((4 - thursday.getDay() + 7) % 7 || 7));
+    // From that Thursday, "Thursday of next week" should be +7 days.
+    const result = collectAvailability({
+      verbal_availability: 'Thursday of next week',
+      priority: 'Standard',
+    });
+    // Should contain 'Thursday' and be strictly in the future.
+    expect(result.scheduled_date).toContain('Thursday');
+  });
+
+  test('ignores preferred_date in the past', () => {
+    const lastYear = new Date();
+    lastYear.setFullYear(lastYear.getFullYear() - 1);
+    const iso = lastYear.toISOString().slice(0, 10);
+    const result = collectAvailability({
+      verbal_availability: 'morning works',
+      priority: 'Standard',
+      preferred_date: iso,
+    });
+    // Should NOT use last year's date — must be in the future.
+    const scheduled = result.scheduled_date.toLowerCase();
+    expect(scheduled).not.toMatch(new RegExp(String(lastYear.getFullYear())));
+  });
+
+  test('ignores preferred_date whose day-of-week conflicts with spoken day', () => {
+    // Resident says "Thursday", Claude hallucinates a Friday — tool should trust Thursday.
+    // Find the next Friday from today as the bogus preferred_date.
+    const fri = new Date();
+    fri.setDate(fri.getDate() + ((5 - fri.getDay() + 7) % 7 || 7));
+    const iso = fri.toISOString().slice(0, 10);
+    const result = collectAvailability({
+      verbal_availability: 'Thursday afternoon',
+      priority: 'Standard',
+      preferred_date: iso,
+    });
+    expect(result.scheduled_date).toContain('Thursday');
+    expect(result.scheduled_date).not.toContain('Friday');
+  });
 });
 
 describe('Service Request Creation', () => {

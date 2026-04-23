@@ -25,11 +25,25 @@ const anthropic = new Anthropic({
   apiKey: process.env.LLM_API_KEY,
 });
 
-// Load system prompt
-const systemPrompt = fs.readFileSync(
+// Load system prompt template
+const systemPromptTemplate = fs.readFileSync(
   path.join(__dirname, 'prompts', 'system-prompt.md'),
   'utf-8'
 );
+
+/**
+ * Build the system prompt for a given call. Injects today's date so Claude
+ * can resolve relative day references ("Thursday of next week") correctly.
+ */
+function buildSystemPrompt() {
+  const now = new Date();
+  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const months = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'];
+  const todayStr = `${days[now.getDay()]}, ${months[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}`;
+  const iso = now.toISOString().slice(0, 10);
+  return `Today is ${todayStr} (${iso}). Use this for any date math the resident triggers.\n\n${systemPromptTemplate}`;
+}
 
 // All tool definitions for Claude
 const tools = [
@@ -278,7 +292,7 @@ async function callClaudeAndRespond(ws, callId, state, responseId, startTime) {
     response = await anthropic.messages.create({
       model: CLAUDE_MODEL,
       max_tokens: 400,
-      system: systemPrompt,
+      system: buildSystemPrompt(),
       tools: tools,
       messages: state.claudeMessages,
     });

@@ -202,6 +202,17 @@ describeIfLLM('Emergency Detection (LLM)', () => {
     expect(text).not.toMatch(/emergency|urgent|fast.?track|right away|priorit/i);
   }, 15000);
 
+  test('bot never says "emergency" or "not an emergency" to the resident', async () => {
+    // Regression: bot was saying "This isn't an emergency situation" — internal jargon leak.
+    const response = await getClaudeResponse([
+      { role: 'assistant', content: "Got it, I have that property. What maintenance issue are you experiencing?" },
+      { role: 'user', content: "A tree fell in the backyard and damaged my fence" },
+    ]);
+    const text = getTextContent(response).toLowerCase();
+    // Must not label the call as emergency/non-emergency either way.
+    expect(text).not.toMatch(/\bemergency\b|not an emergency|non.?emergency|priority level/i);
+  }, 15000);
+
   test('dead refrigerator is emergency (food spoilage)', async () => {
     const propertyContext = { found: true, property: { state: 'CA' }, unit: { full_bathrooms: 2 } };
     const response = await getClaudeResponse([

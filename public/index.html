@@ -374,7 +374,18 @@
       el.textContent = msg; el.className = 'call-status ' + cls;
     }
 
+    // Strip SSML tags (break, prosody, etc.) that are spoken by TTS but
+    // shouldn't appear in the visible transcript.
+    function stripSsml(text) {
+      if (!text) return text;
+      return text.replace(/<break[^>]*\/?>/gi, ' ')
+                 .replace(/<\/?(prosody|say-as|emphasis|voice|speak|phoneme|sub)[^>]*>/gi, '')
+                 .replace(/\s{2,}/g, ' ')
+                 .trim();
+    }
+
     function addMessage(role, text) {
+      const display = stripSsml(text);
       const el = document.getElementById('transcript');
       // Remove placeholder
       if (el.querySelector('div[style]')) el.innerHTML = '';
@@ -382,11 +393,18 @@
       // Update or create message bubble for this role
       const existing = el.querySelector(`.msg.${role}:last-child`);
       if (existing) {
-        existing.querySelector('.text').textContent = text;
+        existing.querySelector('.text').textContent = display;
       } else {
         const msg = document.createElement('div');
         msg.className = `msg ${role}`;
-        msg.innerHTML = `<div class="role">${role === 'agent' ? 'Mynd Bot' : 'Resident'}</div><div class="text">${text}</div>`;
+        const roleDiv = document.createElement('div');
+        roleDiv.className = 'role';
+        roleDiv.textContent = role === 'agent' ? 'Mynd Bot' : 'Resident';
+        const textDiv = document.createElement('div');
+        textDiv.className = 'text';
+        textDiv.textContent = display;
+        msg.appendChild(roleDiv);
+        msg.appendChild(textDiv);
         el.appendChild(msg);
       }
       el.scrollTop = el.scrollHeight;
